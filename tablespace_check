@@ -1,0 +1,135 @@
+To reclaim the unused space from the datafile by shrinking: 
+=======================================================
+select 'alter database datafile '''||file_name||''' resize ' ||
+       ceil( (nvl(hwm,1)*8192)/1024/1024 ) || 'm;' cmd
+from dba_data_files a,
+     ( select file_id, max(block_id+blocks-1) hwm
+         from dba_extents
+        group by file_id ) b
+where a.file_id = b.file_id(+)
+  and ceil( blocks*8192/1024/1024) -
+      ceil( (nvl(hwm,1)*8192)/1024/1024 ) > 0 ;
+
+To Temp usage details:
+============================================
+Check size :
+select TABLESPACE_NAME, sum(BYTES_USED/1024/1024/1024) as "BYTES_USED in GB" , sum(BYTES_FREE/1024/1024/1024) as "BYTES_FREE in GB" 
+from V$TEMP_SPACE_HEADER group by TABLESPACE_NAME
+
+
+select (s.tot_used_blocks/f.total_blocks)*100 as "percent used"
+from (select sum(used_blocks) tot_used_blocks from 
+v$sort_segment where tablespace_name='TTS1') s, 
+(select sum(blocks) total_blocks from 
+dba_temp_files where tablespace_name='TTS1') f;
+
+SELECT s.sid, s.username, s.status, u.tablespace, u.segfile#, u.contents, u.extents, u.blocks 
+FROM v$session s, v$sort_usage u 
+WHERE s.saddr=u.session_addr 
+ORDER BY u.tablespace, u.segfile#, u.segblk#, u.blocks;
+ 
+ set lines 200
+col username format a20
+select    username,   session_addr,    session_num,    sql_id,    contents,   segtype,    extents,    blocks
+from  v$tempseg_usage order by username;
+
+To Check the Session in Temp usages : 
+=============================
+SET PAUSE ON
+SET PAUSE 'Press Return to Continue'
+SET PAGESIZE 50
+SET LINESIZE 300 
+COLUMN tablespace FORMAT A20
+COLUMN temp_size FORMAT A20
+COLUMN sid_serial FORMAT A20
+COLUMN username FORMAT A20
+COLUMN program FORMAT A50
+ 
+SELECT b.tablespace,
+       ROUND(((b.blocks*p.value)/1024/1024),2)||'M' AS temp_size,
+       a.inst_id as Instance,
+       a.sid||','||a.serial# AS sid_serial,
+       NVL(a.username, '(oracle)') AS username,
+       a.program,
+       a.status,
+       a.sql_id
+FROM   gv$session a,
+       gv$sort_usage b,
+       gv$parameter p
+WHERE  p.name  = 'db_block_size'
+AND    a.saddr = b.session_addr
+AND    a.inst_id=b.inst_id
+AND    a.inst_id=p.inst_id
+ORDER BY b.tablespace, b.blocks
+/ 
+
+Examine the number of sorts in the system (from instance startup):
+=============================
+SELECT NAME, VALUE FROM V$SYSSTAT WHERE NAME LIKE '%sorts%';
+
+c. Examine statistics about temporary tablespace blocks:
+COL TABLESPACE_NAME FOR A16
+SELECT TABLESPACE_NAME, CURRENT_USERS,
+       TOTAL_BLOCKS, USED_BLOCKS, FREE_BLOCKS,
+       MAX_BLOCKS, MAX_USED_BLOCKS, MAX_SORT_BLOCKS
+FROM V$SORT_SEGMENT
+ORDER BY TABLESPACE_NAME;
+
+Percent Checking 
+=============================
+select a.tbl "TBS_Name",a.tsz "Total_Size-GB",b.fsz "Free_Space-GB"
+    ,round((b.fsz/a.tsz)*100) "Free%",round((1-(b.fsz/a.tsz))*100) "Used%"from
+                (select tablespace_name tbl,sum(bytes)/1024/1024/1024 TSZ from dba_data_files
+                where tablespace_name in ('TOOLS') group by tablespace_name) a,
+                (select tablespace_name tblsp,sum(bytes)/1024/1024/1024 FSZ from dba_free_space
+                where tablespace_name in ('TOOLS') group by tablespace_name) b
+    Where a.tbl=b.tblsp order by 'Used%' desc;
+
+All tablespace percent checking :
+=============================
+select f.tablespace_name name,sum(f.bytes/1024/1024) Filesize,
+       sum(f.maxbytes/1024/1024) maxsize,sum(f.bytes)/sum(f.maxbytes)*100 Pct from   dba_data_files f
+where  f.AUTOEXTENSIBLE = 'YES' and f.tablespace_name not like '%TEMP%' and f.tablespace_name not like '%UNDO%' group by f.tablespace_name ;
+
+Auto Extend On Tablespace:
+=============================
+SELECT FILE_NAME,TABLESPACE_NAME,BYTES/1024/1024,AUTOEXTENSIBLE,MAXBYTES/1024/1024,INCREMENT_BY FROM DBA_DATA_FILES WHERE TABLESPACE_NAME='EIS_DATA_MASTER' order by 1;
+
+alter database datafile '/dbf/eis/d2/master_d_01.dbf' AUTOEXTEND ON NEXT 1M MAXSIZE 1024M;
+
+Temp tablespace:
+==============================
+alter tablespace TTS1 add tempfile '/dbf/swm1/d2/temp02.dbf' size  50m reuse autoextend on next 1m maxsize 500m;
+
+Tablespaces usage:
+==================================
+column "Tablespace" format a13
+column "Used MB"    format 99,999,999
+column "Free MB"    format 99,999,999
+column "Total MB"   format 99,999,999
+select
+   fs.tablespace_name                          "Tablespace",
+   (df.totalspace - fs.freespace)              "Used MB",
+   fs.freespace                                "Free MB",
+   df.totalspace                               "Total MB",
+   round(100 * (fs.freespace / df.totalspace)) "Pct. Free"
+from
+   (select
+      tablespace_name,
+      round(sum(bytes) / 1048576) TotalSpace
+   from
+      dba_data_files
+   group by
+      tablespace_name
+   ) df,
+   (select
+      tablespace_name,
+      round(sum(bytes) / 1048576) FreeSpace
+   from
+      dba_free_space
+   group by
+      tablespace_name
+   ) fs
+where
+   df.tablespace_name = fs.tablespace_name;
+
