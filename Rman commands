@@ -1,0 +1,15 @@
+calling a rman 
+=====================
+rman @backup_ts_users.rman
+rman target / @backup_ts_users.rman 
+rman target / cmdfile=backup_ts_users.rman log=backup_ts_users.log
+
+Passing values 
+===========================================
+connect target /
+connect catalog rman/secretpass@rmancat 
+run {
+       allocate channel c1 type disk format '&1/%U';
+       backup tablespace &2;
+}
+
