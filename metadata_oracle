@@ -1,0 +1,26 @@
+to get the metadata for paticular objects
+=============================================
+select DBMS_METADATA.GET_DDL(CASE object_type
+    WHEN 'PACKAGE BODY' THEN
+          'PACKAGE_BODY'
+    WHEN 'TYPE BODY' THEN
+          'TYPE_BODY'
+    ELSE 
+	    object_type
+END,object_name,owner) from dba_objects where object_name=upper('T1') and owner='SCOTT';
+
+select 'select dbms_metadata.get_ddl(''TABLESPACE'',''' || tablespace_name || ''') from dual;' from dba_tablespaces
+
+set head off
+set long 90000;
+spool ddl_list.sql
+select dbms_metadata.get_ddl('TABLE','DEPT','SCOTT') from dual; 
+select dbms_metadata.get_ddl('INDEX','DEPT_IDX','SCOTT') from dual;
+select dbms_metadata.get_ddl('PROCEDURE','T1','SCOTT') from dual; 
+spool off
+
+Grant DDL:
+===============
+select dbms_metadata.get_granted_ddl('system_grant','') from dual;
+select dbms_metadata.get_granted_ddl('role_grant','') from dual;
+select dbms_metadata.get_granted_ddl('object_grant','') from dual;
