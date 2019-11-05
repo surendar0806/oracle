@@ -24,3 +24,14 @@ Grant DDL:
 select dbms_metadata.get_granted_ddl('system_grant','') from dual;
 select dbms_metadata.get_granted_ddl('role_grant','') from dual;
 select dbms_metadata.get_granted_ddl('object_grant','') from dual;
+
+
+To migrate the user with same password :
+==============================================
+ 
+ select 'CREATE USER "'||username ||'" IDENTIFIED BY VALUES'''|| spare4 ||'';'from dba_users join sys.user$ on username=name where name='<>';
+  with t as
+ ( select (dbms_metadata.get_ddl('USER',username)) ddl from dba_users where username like '<>' )
+ select substr(ddl,1,instr(ddl,'DEFAULT')-1)||';'
+ from t;
+ 
