@@ -95,11 +95,11 @@ Auto Extend On Tablespace:
 =============================
 SELECT FILE_NAME,TABLESPACE_NAME,BYTES/1024/1024,AUTOEXTENSIBLE,MAXBYTES/1024/1024,INCREMENT_BY FROM DBA_DATA_FILES WHERE TABLESPACE_NAME='EIS_DATA_MASTER' order by 1;
 
-alter database datafile '/dbf/eis/d2/master_d_01.dbf' AUTOEXTEND ON NEXT 1M MAXSIZE 1024M;
+alter database datafile '/dbf/<>/d2/master_d_01.dbf' AUTOEXTEND ON NEXT 1M MAXSIZE 1024M;
 
 Temp tablespace:
 ==============================
-alter tablespace TTS1 add tempfile '/dbf/swm1/d2/temp02.dbf' size  50m reuse autoextend on next 1m maxsize 500m;
+alter tablespace TTS1 add tempfile '/dbf/<>/d2/temp02.dbf' size  50m reuse autoextend on next 1m maxsize 500m;
 
 Tablespaces usage:
 ==================================
