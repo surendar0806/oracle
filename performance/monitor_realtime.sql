@@ -1,0 +1,19 @@
+---------------------
+-- Monitor the sql query real time 
+--
+---------------------
+
+SET FEEDBACK OFF
+SET TERMOUT OFF
+SET TRIMSPOOL ON
+SET TRIM ON
+SET PAGES 0
+SET LINESIZE 1000
+SET LONG 1000000
+SET LONGCHUNKSIZE 1000000
+SPOOL /tmp/long_sql.htm
+SELECT DBMS_SQL_MONITOR.REPORT_SQL_MONITOR(
+report_level => 'ALL',
+TYPE => 'active')
+FROM DUAL;
+SPOOL OFF
