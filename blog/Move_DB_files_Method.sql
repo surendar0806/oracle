@@ -16,22 +16,22 @@ select 'ALTER DATABASE RENAME FILE '''||member||''' TO ''new_location'||substr(m
 --Output:
 ALTER DATABASE RENAME FILE 'C:\ORACLE\ORADATA\XE\REDO01.LOG' TO 'new_location\REDO01.LOG';
 --For Datafiles and undo files:
-SQL> select 'ALTER DATABASE RENAME FILE '''||file_name||''' TO ''new_location'||substr(file_name,INSTR(file_name,'\',-1,1),length(file_name)) ||''';' from dba_data_files;
+select 'ALTER DATABASE RENAME FILE '''||file_name||''' TO ''new_location'||substr(file_name,INSTR(file_name,'\',-1,1),length(file_name)) ||''';' from dba_data_files;
 --Output like following:
 ALTER DATABASE RENAME FILE 'C:\ORACLE\ORADATA\XE\SYSTEM01.DBF' TO 'new_location\SYSTEM01.DBF';
 --For Temp files:
-SQL> select 'ALTER DATABASE RENAME FILE '''||file_name||''' TO ''new_location'||substr(file_name,INSTR(file_name,'\',-1,1),length(file_name)) ||''';' from dba_TEMP_files;
+select 'ALTER DATABASE RENAME FILE '''||file_name||''' TO ''new_location'||substr(file_name,INSTR(file_name,'\',-1,1),length(file_name)) ||''';' from dba_TEMP_files;
 -- Output for temp:
 ALTER DATABASE RENAME FILE 'C:\ORACLE\ORADATA\XE\TEMP01.DBF' TO 'new_location\TEMP01.DBF';
 
 --For Linux use these commands:
 --For Redo log files:
-SQL> Set line 2000 pages 200
-SQL> select 'ALTER DATABASE RENAME FILE '''||member||''' TO ''new_location'||substr(member,INSTR(member,'/',-1,1),length(member)) ||''';' from v$logfile;
+Set line 2000 pages 200
+select 'ALTER DATABASE RENAME FILE '''||member||''' TO ''new_location'||substr(member,INSTR(member,'/',-1,1),length(member)) ||''';' from v$logfile;
 --For Datafiles and undo files:
-SQL> select 'ALTER DATABASE RENAME FILE '''||file_name||''' TO ''new_location'||substr(file_name,INSTR(file_name,'/',-1,1),length(file_name)) ||''';' from dba_data_files;
+select 'ALTER DATABASE RENAME FILE '''||file_name||''' TO ''new_location'||substr(file_name,INSTR(file_name,'/',-1,1),length(file_name)) ||''';' from dba_data_files;
 --For Temp files:
-SQL> select 'ALTER DATABASE RENAME FILE '''||file_name||''' TO ''new_location'||substr(file_name,INSTR(file_name,'/',-1,1),length(file_name)) ||''';' from dba_TEMP_files;
+select 'ALTER DATABASE RENAME FILE '''||file_name||''' TO ''new_location'||substr(file_name,INSTR(file_name,'/',-1,1),length(file_name)) ||''';' from dba_TEMP_files;
 
 --4. After shut down the database and moving all the oradata folders or datafiles to a new location.
 Shutdown immediate
@@ -52,5 +52,4 @@ ALTER DATABASE RENAME FILE 'C:\ORACLE\ORADATA\XE\SYSTEM01.DBF' TO 'new_location\
 ALTER DATABASE RENAME FILE 'C:\ORACLE\ORADATA\XE\TEMP01.DBF' TO 'new_location\TEMP01.DBF';
 
 --8. Open the database after executing all the altered commands:
-
 ALTER DATABASE OPEN;
