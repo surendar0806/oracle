@@ -11,8 +11,8 @@ Create pfile='E:\pfile.txt' from spfile;
 -- 3. Before shutdown the database. Prepared scripts for rename the datafile,undo, redolog and temp files.:
 -- For Windows platform:
 --For Redo log files:
-SQL> Set line 2000 pages 200
-SQL> select 'ALTER DATABASE RENAME FILE '''||member||''' TO ''new_location'||substr(member,INSTR(member,'\',-1,1),length(member)) ||''';' from v$logfile;
+Set line 2000 pages 200
+select 'ALTER DATABASE RENAME FILE '''||member||''' TO ''new_location'||substr(member,INSTR(member,'\',-1,1),length(member)) ||''';' from v$logfile;
 --Output:
 ALTER DATABASE RENAME FILE 'C:\ORACLE\ORADATA\XE\REDO01.LOG' TO 'new_location\REDO01.LOG';
 --For Datafiles and undo files:
