@@ -1,0 +1,2 @@
+--ASM info
+Oracle 11g onward, oracle requires SYSASM privilege do CREATE or DROP an ASM diskgroup.
