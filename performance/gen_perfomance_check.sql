@@ -7,7 +7,8 @@
 -----------------------------------------------------
 --Check for the plan change :
 -----------------------------------------------------
-select SQL_ID, COST,to_char(TIMESTAMP,'dd-mon-yy hh24:mi:ss') as TIMESTAMP,PLAN_HASH_VALUE,ID from dba_hist_sql_plan where SQL_ID='&sql_id' order by timestamp;
+select SQL_ID, COST,to_char(TIMESTAMP,'dd-mon-yy hh24:mi:ss') as TIMESTAMP,PLAN_HASH_VALUE,ID from dba_hist_sql_plan where SQL_ID='&sql_id' 
+order by timestamp;
 select sql_id,count(*) from v$session group by sql_id;
 
 -----------------------------------------------------
