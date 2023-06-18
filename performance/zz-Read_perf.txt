@@ -1,0 +1,31 @@
+Search Index : 
+---------------
+	In its basic form, a text index allows you to create a word-based index on a textual field in the database. 
+Having a search index means that each word in our text has its own index entry, so we are able to rapidly find references to individual words or phrases, or boolean combinations of words, without having to scan the original text
+
+for JSON:
+Second, your JSON search index also allows for full-text search on all string fields within the JSON. 
+First, you have an index for a ‘normal’ JSON search 
+
+Example:
+create table emp(name varchar2(40), salary number, qualifications varchar2(200));
+insert into emp values ('John', 1500, 'PhD in physics, Msc Math');
+commit;
+
+from 23c :
+	create search index emp_qual on emp(qualifications);
+
+earlier version : 
+	create index emp_qual on emp(qualifications) indextype is ctxsys.context;
+
+search : 
+    select * from emp where contains(qualifications, 'physics') > 0;
+
+for JSON : 
+    create search index emp_search on empj(empdata) for json;
+
+Limitation of search Index: 
+	They can’t use an index
+	They are case-sensitive
+	Punctuation and spacing will affect the searches
+	We can’t do  oolean searches such as AND, OR or NOT within the substring search itself, we’d have to do multiple searches which would get very inefficient
