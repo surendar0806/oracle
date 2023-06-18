@@ -1,0 +1,355 @@
+Amazon Relational Database Service (Amazon RDS) Custom for Oracle is a managed database service for legacy, custom, and packaged applications that require access to the underlying operating system and database environment. Amazon RDS Custom now supports the Oracle Multitenant option on Oracle Database version 19c using Enterprise Edition. With this release, an RDS Custom for Oracle DB instance can operate as a multitenant container database (CDB) hosting one or more pluggable databases (PDBs). A PDB is a set of schemas, schema objects, and non-schema objects that logically appears to a client as a non-CDB.
+Oracle released the Multitenant option with 12cR1 to help with consolidation (improved resource utilization), manageability (manage many as one), and enhanced availability (during database maintenance). Starting in Oracle Database 21c, a multitenant container database is the only supported architecture.
+Oracle Multitenant offers the benefit of consolidating several databases (PDBs) into one (CDB) to achieve better resource utilization, along with the advantage of managing many databases as one. While providing simplicity in managing a single database (backups, patching, high availability, and disaster recovery), it gives isolation for each individual PDB for access and resource limits.
+In this post, we discuss the configuration and operational best practices for Oracle Multitenant on Amazon RDS Custom for Oracle to achieve better performance and efficient administration of Oracle Database. We primarily focus on enabling HugePages, enabling local undo, creating remote clones for PDBs, pluggable database resource management and monitoring tools using Amazon CloudWatch, and how to use CloudWatch alarms for proactive monitoring. This will enable streamlining processes, improve communication and collaboration between teams, and implement effective database management and analytics solutions.
+Solution overview
+Amazon RDS Custom for Oracle Multitenant will enables the following use cases:
+•	Only multitenant architecture databases are certified for Oracle E-Business Suite with Oracle Database 19c. Oracle E-Business suite supports the multitenant architecture with a single CDB containing a single PDB. For more information, refer to Oracle E-Business Suite and the Oracle Multitenant Architecture (Doc ID 2567105.1). Oracle E-Business Suite’s requirement of OS access and multitenant architecture makes Amazon RDS Custom for Oracle with the Multitenant option suitable for its use. This will provide you the managed experience you want when running Oracle E-Business Suite on Amazon Elastic Compute Cloud (Amazon EC2) or on premises.
+•	You can consolidate your lower footprint database workloads. Customers of Amazon RDS Custom for Oracle are provided with smallest instance type with 2 vCPUs for a single PDB multitenant option. We have seen some customers with multiple environments that don’t need 2 vCPUs and can benefit from consolidating such environments further. Amazon RDS Custom for Oracle with the Multitenant option, which allows you to create multiple PDBs, can help with this requirement to optimize cost. This will also help with manageability because many databases can be managed as one.
+Define the maximum number of PDBs
+The MAX_PDBS parameter (introduced in 12.2) allows you to define the maximum number of PDBs in a CDB.
+Oracle Enterprise Edition allows usage of up to three user-created PDBs without requiring an additional license for the Multitenant option. Refer to Features and Licensing for the Multitenant architecture for more details. If you don’t have a license for the Multitenant option, to avoid accidental creation of more than three PDBs in your CDB, set max_pdbs to 3. See the following code:
+To find the user for Oracle installation for your RDS Custom for Oracle instance, you can check the owner of one of the Oracle Database background process. By default it is rdsdb user. (Note: If you included installation parameters in your CEV manifest, then your DB instance uses the Oracle base, Oracle home, and the ID and name of the UNIX/Linux user and group that you specified.)
+$ ps -ef | grep pmon
+rdsdb 4787 1 0 Jan29 ? 00:00:00 ora_pmon_RDSCDB
+ssm-user 23715 23416 0 02:51 pts/0 00:00:00 grep —color=auto pmon
+
+$ sudo su – rdsdb
+
+-bash-4.2$ sql
+
+SQL> show parameter max_pdbs
+
+NAME TYPE VALUE
+------------------------------------ ----------- ----------------------------
+max_pdbs integer 254
+
+SQL> show spparameter max_pdbs
+
+SID NAME TYPE VALUE
+-------- ----------------------------- ----------- ---------------------------- 
+max_pdbs integer
+SQL> alter system set max_pdbs=3;
+
+System altered.
+
+SQL> show parameter max_pdbs
+
+NAME TYPE VALUE
+------------------------------------ ----------- ------------------------------
+max_pdbs integer 3
+
+SQL> show spparameter max_pdbs
+
+SID NAME TYPE VALUE
+-------- ----------------------------- ----------- ----------------------------
+max_pdbs integer 3
+Enable HugePages
+The HugePages feature is an integral part of the Linux kernel 2.6. If HugePages is enabled, the operating system can support memory pages greater than the default (4 KB). With HugePages, the page size is configurable (2 MB – 1 GB) depending on kernel version and hardware architecture. With the help of HugePages, memory required for page tables can be lowered and system performance for page access and management is improved. Another benefit is pages are locked in memory and never swapped out. These advantages of HugePages will help improve performance of Oracle Database with a large System Global Area (SGA).
+1.	Use the following code:
+$ sudo cat /proc/sys/vm/nr_hugepages
+0
+The output shows that HugePages isn’t configured on the RDS Custom instance:
+sudo grep page /proc/meminfo
+Hugepagesize: 2048 kB
+HugePages size is defined as 2 MB:
+sudo su - rdsdb
+-bash-4.2$ ulimit -l
+134217728
+This is the maximum locked-in memory address space in KB.
+By default in an RDS Custom for Oracle instance, automatic memory management (AMM) is enabled by setting memory_target to a non-zero value. By default, it is set to 3/4 of the DB instance class memory (DBInstanceClassMemory*3/4).
+2.	In this example, DB instance class memory is 32 GiB, so memory_target and memory_max_target are set to 24 GiB:
+SQL> show parameter memory_target
+
+NAME TYPE VALUE
+------------------------------------ ----------- ------------------------------
+memory_target big integer 23808M
+
+SQL> show parameter memory_max_target
+
+NAME TYPE VALUE
+------------------------------------ ----------- ------------------------------
+memory_max_target big integer 23808M
+To use HugePages, AMM has to be disabled and automatic shared memory management (ASMM) has to be enabled.
+To disable AMM, we need to set memory_target and memory_max_target to 0. To enable ASMM, we need to set sga_target and sga_max_size to non-zero values.
+For this example, we set the following:
+•	
+o	sga_target and sga_max_target to 3/4 of the DB instance class memory: (3/4*32) = 24 GiB
+o	pga_aggregate_target to 1/8 of the DB instance class memory: (1/8*32) = 4 GiB
+o	memory_target and memory_max_target to 0
+3.	Use the following code:
+SQL> alter system reset memory_target scope=spfile;
+
+System altered.
+
+SQL> alter system set SGA_MAX_SIZE=23808m scope=spfile;
+
+System altered.
+
+SQL> alter system set SGA_TARGET=23808m scope=spfile;
+
+System altered.
+
+SQL> alter system set PGA_AGGREGATE_TARGET=4G scope=spfile;
+You can pause automation using the AWS Management Console or the AWS Command Line Interface (AWS CLI).
+4.	The following command pauses Amazon RDS Custom automation for 90 minutes:
+aws rds modify-db-instance \
+--db-instance-identifier mtbp-1 \
+--automation-mode all-paused \
+--resume-full-automation-mode-minutes 90
+Once modified, the status of the instance shows as automation-paused:
+aws rds describe-db-instances \
+--db-instance-identifier mtbp-1 \
+--query 'DBInstances[*].DBInstanceStatus'
+
+[
+"automation-paused"
+]
+5.	Restart the database instance:
+SQL> shutdown immediate
+Database closed.
+Database dismounted.
+ORACLE instance shut down.
+
+SQL> startup
+ORACLE instance started.
+
+Total System Global Area 2.4964E+10 bytes
+Fixed Size 9154736 bytes
+Variable Size 2013265920 bytes
+Database Buffers 2.2884E+10 bytes
+Redo Buffers 57950208 bytes
+Database mounted.
+Database opened.
+
+SQL> show parameter sga_target
+
+NAME TYPE VALUE
+------------------------------------ ----------- ------------------------------
+sga_target big integer 23808M
+SQL> show parameter sga_max_size
+
+NAME TYPE VALUE
+------------------------------------ ----------- ------------------------------
+sga_max_size big integer 23808M
+SQL> show parameter pga_aggregate_target
+
+NAME TYPE VALUE
+------------------------------------ ----------- ------------------------------
+pga_aggregate_target big integer 4G
+SQL> show parameter memory_target
+
+NAME TYPE VALUE
+------------------------------------ ----------- ------------------------------
+memory_target big integer 0
+SQL> show parameter memory_max_target
+
+NAME TYPE VALUE
+------------------------------------ ----------- ------------------------------
+memory_max_target big integer 0
+
+SQL> alter system set use_large_pages=ONLY scope=spfile;
+
+System altered.
+
+SQL> shutdown immediate
+Database closed.
+Database dismounted.
+ORACLE instance shut down.
+6.	Log in as root (you can do it via ssm-user or ec2-user):
+sudo su -
+~]# id
+uid=0(root) gid=0(root) groups=0(root)
+7.	Create hugepages_settings.sh as per My Oracle Support note 401749.1:
+[root@ip---- ~]# vi hugepages_settings.sh
+[root@ip---- ~]# chmod +x hugepages_settings.sh
+[root@ip---- ~]# ./hugepages_settings.sh
+
+This script is provided by Doc ID 401749.1 from My Oracle Support
+(http://support.oracle.com) where it is intended to compute values for
+the recommended HugePages/HugeTLB configuration for the current shared
+memory segments on Oracle Linux. Before proceeding with the execution please note following:
+
+For ASM instance, it needs to configure ASMM instead of AMM.
+The 'pga_aggregate_target' is outside the SGA and
+you should accommodate this while calculating the overall size.
+In case you changes the DB SGA size,
+as the new SGA will not fit in the previous HugePages configuration,
+it had better disable the whole HugePages,
+start the DB with new SGA size and run the script again.
+And make sure that:
+Oracle Database instance(s) are up and running
+Oracle Database 11g Automatic Memory Management (AMM) is not setup
+(See Doc ID 749851.1)
+The shared memory segments can be listed by command:
+# ipcs -m
+
+Press Enter to proceed...
+
+Recommended setting: vm.nr_hugepages = 11906
+[root@ip-- ~]#
+
+[root@ip-- ~]# sysctl -w vm.nr_hugepages=11906
+vm.nr_hugepages = 11906
+[root@ip-- ~]#
+
+Add vm.nr_hugepages to /etc/sysctl.conf to persist the hugepages setting post restart.
+[root@ip-- ~]# vi /etc/sysctl.conf
+vm.nr_hugepages = 11906
+
+[root@ip-- ~]# grep Huge /proc/meminfo
+AnonHugePages: 0 kB
+ShmemHugePages: 0 kB
+HugePages_Total: 11906
+HugePages_Free: 11906
+HugePages_Rsvd: 0
+HugePages_Surp: 0
+Hugepagesize: 2048 kB
+
+$ sudo su - rdsdb
+
+-bash-4.2$ sql
+
+SQL> startup
+ORACLE instance started.
+
+Total System Global Area 2.4964E+10 bytes
+Fixed Size 9154736 bytes
+Variable Size 2013265920 bytes
+Database Buffers 2.2884E+10 bytes
+Redo Buffers 57950208 bytes
+Database mounted.
+Database opened.
+SQL> show parameter use_large_pages
+
+NAME TYPE VALUE
+------------------------------------ ----------- ------------------------------
+use_large_pages string ONLY
+
+-bash-4.2$ grep Huge /proc/meminfo
+AnonHugePages: 0 kB
+ShmemHugePages: 0 kB
+HugePages_Total: 11906
+HugePages_Free: 26
+HugePages_Rsvd: 26
+HugePages_Surp: 0
+Hugepagesize: 2048 kB
+The alert log shows the following while starting the instance:
+..
+-bash-4.2$ cd /rdsdbdata/log/diag/rdbms/rdscdb_a/RDSCDB/trace
+-bash-4.2$ vi alert_RDSCDB.log
+..
+..
+2023-02-01T04:03:50.330398+00:00
+Available system pagesizes:
+4K, 2048K
+2023-02-01T04:03:50.330499+00:00
+Supported system pagesize(s):
+2023-02-01T04:03:50.330553+00:00
+PAGESIZE AVAILABLE_PAGES EXPECTED_PAGES ALLOCATED_PAGES ERROR(s)
+2023-02-01T04:03:50.330641+00:00
+2048K 11906 11906 11906 NONE
+2023-02-01T04:03:50.330680+00:00
+Reason for not supporting certain system pagesizes:
+2023-02-01T04:03:50.330719+00:00
+4K - Large pagesizes only
+..
+8.	Resume automation using the console or AWS CLI:
+aws rds modify-db-instance \
+--db-instance-identifier mtbp-1 \
+--automation-mode full
+Once modified, the status of the instance shows as available:
+aws rds describe-db-instances \
+--db-instance-identifier mtbp-1 \
+--query 'DBInstances[*].DBInstanceStatus'
+[
+"modifying"
+]
+
+aws rds describe-db-instances \
+--db-instance-identifier mtbp-1 \
+--query 'DBInstances[*].DBInstanceStatus'
+[
+"available"
+]
+Enable local undo
+A container database can run in local undo mode or shared undo mode. Local undo mode means that every container in the CDB uses its own undo tablespace. Shared undo mode means that there is one active undo tablespace per instance of a single-instance CDB.
+By default, a container database is in shared undo mode.
+Local undo mode provides increased isolation for each container and improves the efficiency of some operations, such as unplugging the container or performing point-in-time recovery on the container. In addition, local undo mode is required for some operations to be supported, such as relocating a PDB or cloning a PDB that is in open read/write mode.
+Complete the following steps to enable local undo:
+1.	Make sure undo_management is set to AUTO (this is the default value for RDS Custom for Oracle instances).
+2.	Query dictionary view DATABASE_PROPERTIES to find the value for property LOCAL_UNDO_ENABLED:
+SELECT PROPERTY_NAME, PROPERTY_VALUE
+FROM DATABASE_PROPERTIES
+WHERE PROPERTY_NAME = 'LOCAL_UNDO_ENABLED';
+3.	To enable local undo, shut down the CDB:
+shutdown immediate
+4.	Startup in upgrade mode:
+startup upgrade
+5.	Enable local undo:
+ALTER DATABASE LOCAL UNDO ON;
+6.	Shut down and restart the CDB instance:
+shutdown immediate
+startup
+7.	Verify the property LOCAL_UNDO_ENABLED:
+SELECT PROPERTY_NAME, PROPERTY_VALUE
+FROM DATABASE_PROPERTIES
+WHERE PROPERTY_NAME = 'LOCAL_UNDO_ENABLED';
+The local undo capability is important in remote PDB cloning because it allows for the creation of a new PDB from an existing one, without affecting the original data. The local undo feature in PDB cloning helps ensure the data integrity of the original PDB, as well as the consistency of the newly created PDB. This will be very helpful in some use cases.
+Let’s say you have multiple pluggable databases in your production environment and you want to clone one or more PDBs from your production environment on Amazon RDS Custom for Oracle to another test environment running on Amazon RDS Custom for Oracle. This will eliminate the need for restoring the entire snapshot for Amazon RDS Custom for Oracle, which will save time and resources. You can remote clone the production copy of your PDB over a database link. The database link needs to be created in the target CDB, which is the test environment on Amazon RDS Custom for Oracle in this use case. The database link will connect to the source in the production environment where we want to clone from.
+The following are a few criteria related to database character sets, open mode of the source DB, and the database link required to perform a remote clone:
+•	The source PDB must not be closed.
+•	If the remote CDB is not in local undo mode, then the source PDB must be open in read-only mode.
+•	If the remote CDB is not in ARCHIVELOG mode, then the source PDB must be open in read-only mode.
+•	A database link must enable a connection from the destination CDB (the CDB to which the PDB is being cloned) to the PDB in the source CDB.
+•	The database link can connect as a common user to the root of the source CDB, or as a common or local user to the source PDB. The source PDB can be either a standard PDB or application PDB.
+For more details about the prerequisites, refer to Cloning a Remote PDB: Basic Steps.
+Connect to the EC2 instance of the RDS Custom for Oracle target instance and perform the following steps:
+1.	Add the details of the source database in the tnsnames.ora file:
+cd $ORACLE_HOME/network/admin
+vi tnsnames.ora
+CLONE_SRC=(DESCRIPTION =(ADDRESS_LIST = (ADDRESS = (PROTOCOL = TCP)(PORT=1521)(HOST = 10.0.2.238)))(CONNECT_DATA = (SID=orcl)(SERVER = DEDICATED)(SERVICE_NAME = orcl)))
+In the preceding code, CLONE_SRC is the identifier in tnsnames.ora for the source database instance.
+2.	Log in to the target database and create a database link called clone_from_prod:
+SQL> create database link clone_from_prod connect to clone_user identified by **** using 'CLONE';
+
+Database link created.
+3.	Use the database link to clone the ORCL_CL3 PDB from source to ORCL_REMOTE at target:
+SQL> create pluggable database ORCL_REMOTE from ORCL@clone_from_prod;
+Pluggable database created.
+SQL> alter pluggable database ORCL_REMOTE open;
+
+Pluggable database altered.
+Best practices for PDB resource management
+Oracle Multitenant is a database architecture that allows multiple pluggable databases (PDBs) to share a single container database (CDB), providing a more efficient and consolidated approach to database management. Proper resource management is critical for maintaining the performance and stability of a multitenant environment.
+In this context, best practices for Oracle multitenant PDB resource management refer to the guidelines and strategies that organizations can follow to optimize the allocation and utilization of system resources, such as CPU, memory, and disk space, across the CDB and its PDBs.
+In this section, we share some of the best practices for managing resource allocation to PDBs.
+Memory allocation
+You can set the following parameters at the PDB level to control the minimum or maximum SGA allocation to each PDB, depending on your workload requirements:
+•	SGA_TARGET – Maximum SGA size for a PDB.
+•	SGA_MIN_SIZE – Minimum SGA size for the PDB. This parameter is only applicable for PDBs.
+As per About memory configuration parameter on each PDBs (Doc ID 2655314.1), do not set shared_pool_size and db_cache_size at PDB level. Instead, let the instance manage it automatically using sga_target.
+I/O rate (IOPS and throughput) limit
+You can set the following parameters at the PDB level to limit I/O usage by PDBs. The default values for these parameters is zero (there are no limits). If these parameters are set at CDB$ROOT level, all PDBs will inherit those limits. Use the following parameters to limit the I/O rate for individual PDBs as per your requirements:
+•	MAX_IOPS – Maximum number of I/O that can be issued per second on a per PDB basis
+MAX_MBPS – Maximum number of megabytes of I/O issued per second on a per PDB basis
+If a certain process is rate limited due to these parameters, then the wait event is resmgr:I/O rate limit.
+For more details, refer to I/O Rate Limits for PDBs 12.2 New feature (Doc ID 2164827.1).
+You can use V$RSRCPDBMETRIC, V$RSRCPDBMETRIC_HISTORY, and DBA_HIST_RSRC_PDB_METRIC to check usage of IOPS and IOMBPS usage by a certain PDB. You can use the same information to set upper limits.
+For example, use the following code to calculate the maximum usage of these metrics for a certain period:
+SELECT MAX(IOPS), MAX(IOMBPS) FROM DBA_HIST_RSRC_PDB_METRIC WHERE time_collected BETWEEN <start_time> AND <end_time>;
+Use performance profiles for OS resource allocation
+If you have more than one user-created PDB in the CDB, consider using Oracle Resource Manager for these PDBs to allocate resources. Resource Manager can be enabled at two levels:
+•	CDB level – At this level, you allocate resources for each PDB and limit utilization of specific PDBs using a CDB resource plan
+•	PDB level – Within a PDB, if you want to limit resource utilization by certain workloads, use a PDB-level resource plan
+For more information about using performance profiles for easier OS resource allocation management of several PDBs, refer to Managing OS Resources Among PDBs Using PDB Performance Profiles – 12.2 New Feature (Doc ID 2171135.1).
+Monitoring best practices
+Monitoring is an important part of maintaining the reliability, availability, and performance of Amazon RDS Custom for Oracle. If you’re familiar with Amazon RDS for Oracle, you can understand the capability of CloudWatch in terms of monitoring. For a solution using CloudWatch with an RDS Custom for Oracle environment, refer to Monitor Amazon RDS Custom for Oracle with Amazon CloudWatch metrics. You can extend this solution to monitor self-managed Oracle installations on Amazon EC2. This will enable you to monitor the health of Oracle instances (both Amazon RDS Custom and self-managed) and observe changes to the infrastructure and databases workloads. You can monitor metrics over a specific time period and set CloudWatch alarms to receive notifications.
+Summary
+In this post, we provided step-by-step guidance on the operational best practices for using Amazon RDS Custom for Oracle Multitenant. We discussed efficient management of an RDS Custom for Oracle container database using resource management, local undo, and HugePages. We also discussed a monitoring solution so that performance and infrastructure issues can be addressed in a timely manner.
+We welcome your feedback. If you have questions or suggestions, leave them in the comments section.
+________________________________________
+About the authors
+
+ Arnab Saha is a Senior Database Specialist Solutions Architect at AWS. Arnab specializes in Amazon RDS, Amazon Aurora and Amazon Elastic Block Store. He provides guidance and technical assistance to customers thus enabling them to build scalable, highly available and secure solutions in AWS Cloud.
+ Vishal Patil is a Senior Database Specialist Solutions Architect with Amazon Web Services. He is a part of AWS RDS team, which focuses on managed services that makes it simple to set up, operate, and scale databases in the cloud. He enjoys listening to customer requirements and helps them migrate and optimally run Oracle workloads in AWS.
