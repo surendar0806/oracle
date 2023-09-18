@@ -13,7 +13,7 @@ v$sort_segment where tablespace_name='TTS1') s,
 dba_temp_files where tablespace_name='TTS1') f;
 
 -- ----------------------------------------------------------------------------
-To Check the Session in Temp usages : 
+-- To Check the Session in Temp usages : 
 -- ----------------------------------------------------------------------------
 SET PAUSE ON
 SET PAUSE 'Press Return to Continue'
@@ -54,3 +54,15 @@ col username format a20
 
 select    username,   session_addr,    session_num,    sql_id,    contents,   segtype,    extents,    blocks
 from  v$tempseg_usage order by username;
+
+
+-- ----------------------------------------------------------------------------
+-- To Check the size of undo tablespace:
+--  NEW_UNDOTBS_FILE_SIZE_MB = CURR_UNDOTBS_FILE_SIZE_MB + CURR_UNDOTBS_FILE_SIZE_MB*0.2
+-- ----------------------------------------------------------------------------
+
+SELECT file_name, tablespace_name, bytes/1024/1024 UNDO_SIZE_MB, SUM
+(bytes/1024/1024) OVER() TOTAL_UNDO_SIZE_MB
+      FROM dba_data_files d
+      WHERE EXISTS (SELECT 1 FROM v$parameter p WHERE LOWER
+(p.name)='undo_tablespace' AND p.value=d.tablespace_name);
