@@ -1,0 +1,8 @@
+1. What does resetlogs option does ?
+  The RESETLOGS option is always required after incomplete media recovery or recovery using a backup control file. 
+Resetting the redo log does the following:
+--> Archives the current online redo logs (if they are accessible) and then erases the contents of the online redo logs and resets the log sequence number to 1.
+For example, if the current online redo logs are sequence 1000 and 1001 when you open RESETLOGS, then the database archives logs 1000 and 1001 and then resets the online logs to sequence 1 and 2.
+--> Creates the online redo log files if they do not currently exist.
+--> Reinitializes the control file metadata about online redo logs and redo threads.
+--> Updates all current datafiles and online redo logs and all subsequent archived redo logs with a new RESETLOGS SCN and time stamp.
